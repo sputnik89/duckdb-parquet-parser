@@ -211,3 +211,72 @@ inline const char* parquet_type_name(ParquetType t) {
         default:                                return "UNKNOWN";
     }
 }
+
+inline const char* encoding_name(Encoding e) {
+    switch (e) {
+        case Encoding::PLAIN:                return "PLAIN";
+        case Encoding::GROUP_VAR_INT:        return "GROUP_VAR_INT";
+        case Encoding::PLAIN_DICTIONARY:     return "PLAIN_DICTIONARY";
+        case Encoding::RLE:                  return "RLE";
+        case Encoding::BIT_PACKED:           return "BIT_PACKED";
+        case Encoding::DELTA_BINARY_PACKED:  return "DELTA_BINARY_PACKED";
+        case Encoding::DELTA_LENGTH_BYTE_ARRAY: return "DELTA_LENGTH_BYTE_ARRAY";
+        case Encoding::DELTA_BYTE_ARRAY:     return "DELTA_BYTE_ARRAY";
+        case Encoding::RLE_DICTIONARY:       return "RLE_DICTIONARY";
+        case Encoding::BYTE_STREAM_SPLIT:    return "BYTE_STREAM_SPLIT";
+        default:                             return "UNKNOWN";
+    }
+}
+
+inline const char* compression_name(CompressionCodec c) {
+    switch (c) {
+        case CompressionCodec::UNCOMPRESSED: return "UNCOMPRESSED";
+        case CompressionCodec::SNAPPY:       return "SNAPPY";
+        case CompressionCodec::GZIP:         return "GZIP";
+        case CompressionCodec::LZO:          return "LZO";
+        case CompressionCodec::BROTLI:       return "BROTLI";
+        case CompressionCodec::LZ4:          return "LZ4";
+        case CompressionCodec::ZSTD:         return "ZSTD";
+        case CompressionCodec::LZ4_RAW:      return "LZ4_RAW";
+        default:                             return "UNKNOWN";
+    }
+}
+
+inline const char* page_type_name(PageType t) {
+    switch (t) {
+        case PageType::DATA_PAGE:       return "DATA_PAGE";
+        case PageType::INDEX_PAGE:      return "INDEX_PAGE";
+        case PageType::DICTIONARY_PAGE: return "DICTIONARY_PAGE";
+        case PageType::DATA_PAGE_V2:    return "DATA_PAGE_V2";
+        default:                        return "UNKNOWN";
+    }
+}
+
+inline const char* converted_type_name(ConvertedType ct) {
+    switch (ct) {
+        case ConvertedType::NONE:             return "NONE";
+        case ConvertedType::UTF8:             return "UTF8";
+        case ConvertedType::MAP:              return "MAP";
+        case ConvertedType::MAP_KEY_VALUE:    return "MAP_KEY_VALUE";
+        case ConvertedType::LIST:             return "LIST";
+        case ConvertedType::ENUM:             return "ENUM";
+        case ConvertedType::DECIMAL:          return "DECIMAL";
+        case ConvertedType::DATE:             return "DATE";
+        case ConvertedType::TIME_MILLIS:      return "TIME_MILLIS";
+        case ConvertedType::TIME_MICROS:      return "TIME_MICROS";
+        case ConvertedType::TIMESTAMP_MILLIS: return "TIMESTAMP_MILLIS";
+        case ConvertedType::TIMESTAMP_MICROS: return "TIMESTAMP_MICROS";
+        case ConvertedType::UINT_8:           return "UINT_8";
+        case ConvertedType::UINT_16:          return "UINT_16";
+        case ConvertedType::UINT_32:          return "UINT_32";
+        case ConvertedType::UINT_64:          return "UINT_64";
+        case ConvertedType::INT_8:            return "INT_8";
+        case ConvertedType::INT_16:           return "INT_16";
+        case ConvertedType::INT_32:           return "INT_32";
+        case ConvertedType::INT_64:           return "INT_64";
+        case ConvertedType::JSON:             return "JSON";
+        case ConvertedType::BSON:             return "BSON";
+        case ConvertedType::INTERVAL:         return "INTERVAL";
+        default:                              return "UNKNOWN";
+    }
+}
