@@ -2,9 +2,33 @@
 
 A standalone C++17 Parquet file parser that reads Parquet metadata, schema, and page-level details without external dependencies.
 
-## Building
+## Prerequisites
 
-Requires CMake 3.16+ and a C++17 compiler.
+Requires CMake 3.16+, a C++17 compiler, and [re2](https://github.com/google/re2).
+
+### Installing re2
+
+**macOS (Homebrew):**
+```bash
+brew install re2
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt-get install libre2-dev
+```
+
+**From source:**
+```bash
+git clone https://github.com/google/re2.git
+cd re2
+mkdir build && cd build
+cmake ..
+make
+sudo make install
+```
+
+## Building
 
 ```bash
 mkdir build && cd build
