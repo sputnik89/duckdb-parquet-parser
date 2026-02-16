@@ -4,7 +4,7 @@ project(parquet_parser LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(parquet_parser
+add_executable(parser
     src/main.cpp
     src/thrift.cpp
     src/metadata.cpp
