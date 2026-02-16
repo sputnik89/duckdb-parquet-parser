@@ -191,11 +191,90 @@ std::vector<uint8_t> ParquetReader::read_page_data(size_t global_page_id) const 
     return self.read_range(entry.data_offset, entry.data_size);
 }
 
+std::vector<uint8_t> ParquetReader::read_pages_chunk(size_t start_page_id, size_t end_page_id,
+                                                      size_t max_bytes) const {
+    if (start_page_id >= page_index_.size()) {
+        throw std::runtime_error("Start page ID " + std::to_string(start_page_id) + " out of range");
+    }
+    if (end_page_id >= page_index_.size()) {
+        throw std::runtime_error("End page ID " + std::to_string(end_page_id) + " out of range");
+    }
+    if (start_page_id > end_page_id) {
+        throw std::runtime_error("Start page ID must be <= end page ID");
+    }
+
+    // Compute total size of all pages in range, capped at max_bytes
+    size_t total_size = 0;
+    for (size_t i = start_page_id; i <= end_page_id; i++) {
+        total_size += page_index_[i].data_size;
+        if (total_size >= max_bytes) {
+            total_size = max_bytes;
+            break;
+        }
+    }
+
+    std::vector<uint8_t> result;
+    result.reserve(total_size);
+
+    auto& self = const_cast<ParquetReader&>(*this);
+    for (size_t i = start_page_id; i <= end_page_id; i++) {
+        const auto& entry = page_index_[i];
+        size_t remaining = max_bytes - result.size();
+        if (remaining == 0) break;
+
+        size_t to_read = std::min(entry.data_size, remaining);
+        auto page_data = self.read_range(entry.data_offset, to_read);
+        result.insert(result.end(), page_data.begin(), page_data.end());
+    }
+
+    return result;
+}
+
 const PageIndexEntry& ParquetReader::page_index_entry(size_t global_page_id) const {
     if (global_page_id >= page_index_.size()) {
         throw std::runtime_error("Global page ID " + std::to_string(global_page_id) + " out of range");
     }
     return page_index_[global_page_id];
+}
+
+// ── Page iterator ────────────────────────────────────────────────────────
+
+PageIterator::PageIterator(ParquetReader& reader, size_t start, size_t end)
+    : reader_(reader), start_(start), end_(end), current_(start) {}
+
+bool PageIterator::has_next() const { return current_ < end_; }
+
+RawPage PageIterator::next() {
+    if (!has_next()) {
+        throw std::runtime_error("PageIterator: no more pages");
+    }
+    const auto& entry = reader_.page_index_entry(current_);
+    RawPage page;
+    page.page_id = current_;
+    page.row_group_idx = entry.row_group_idx;
+    page.column_idx = entry.column_idx;
+    page.data = reader_.read_page_data(current_);
+    current_++;
+    return page;
+}
+
+void PageIterator::reset() { current_ = start_; }
+
+PageIterator ParquetReader::page_iterator() {
+    return PageIterator(*this, 0, page_index_.size());
+}
+
+PageIterator ParquetReader::page_iterator(size_t start_page_id, size_t end_page_id) {
+    if (start_page_id > page_index_.size()) {
+        throw std::runtime_error("start_page_id out of range");
+    }
+    if (end_page_id > page_index_.size()) {
+        throw std::runtime_error("end_page_id out of range");
+    }
+    if (start_page_id > end_page_id) {
+        throw std::runtime_error("start_page_id must be <= end_page_id");
+    }
+    return PageIterator(*this, start_page_id, end_page_id);
 }
 
 // ── Private helpers ──────────────────────────────────────────────────────────

@@ -33,8 +33,6 @@ int main(int argc, char* argv[]) {
 
     // Preview of row values
     std::cout << "\n── Data Preview (first " << PREVIEW_ROWS << " rows) ──\n" << std::endl;
-
-    // Print header row
     for (size_t i = 0; i < reader.num_columns(); i++) {
         if (i > 0) std::cout << " | ";
         std::cout << std::setw(15) << std::left << reader.column(i).name;

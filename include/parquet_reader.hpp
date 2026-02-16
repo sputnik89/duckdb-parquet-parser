@@ -14,6 +14,30 @@ struct PageIndexEntry {
     size_t column_idx;     // which column (leaf column index)
 };
 
+struct RawPage {
+    size_t page_id;
+    size_t row_group_idx;
+    size_t column_idx;
+    std::vector<uint8_t> data;
+};
+
+class ParquetReader;
+
+class PageIterator {
+public:
+    PageIterator(ParquetReader& reader, size_t start, size_t end);
+
+    bool has_next() const;
+    RawPage next();
+    void reset();
+
+private:
+    ParquetReader& reader_;
+    size_t start_;
+    size_t end_;
+    size_t current_;
+};
+
 class ParquetReader {
 public:
     ~ParquetReader();
@@ -42,6 +66,10 @@ public:
     size_t num_pages() const;
     std::vector<uint8_t> read_page_data(size_t global_page_id) const;
     const PageIndexEntry& page_index_entry(size_t global_page_id) const;
+    std::vector<uint8_t> read_pages_chunk(size_t start_page_id, size_t end_page_id,
+                                           size_t max_bytes) const;
+    PageIterator page_iterator();
+    PageIterator page_iterator(size_t start_page_id, size_t end_page_id);
 
     // ── Accessors ────────────────────────────────────────────────────────────
 

@@ -7,6 +7,10 @@
 #include <variant>
 #include <vector>
 
+#define KB (1024ULL)
+#define MB (1048576ULL)
+#define GB (1073741824ULL)
+
 // ── Parquet Enums ──────────────────────────────────────────────────────────────
 
 enum class ParquetType : int32_t {
