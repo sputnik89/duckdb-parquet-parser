@@ -37,6 +37,7 @@ int main(int argc, char* argv[]) {
         if (page.column_idx != static_cast<size_t>(col_idx)) continue;
 
         if (chunk_data.size() + page.data.size() > CHUNK_THRESHOLD) {
+            // TODO: add this chunk to shared memory
             std::cout << std::endl;
             chunk_id++;
             chunk_data.clear();
