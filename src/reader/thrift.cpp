@@ -1,4 +1,4 @@
-#include "thrift.hpp"
+#include "reader/thrift.hpp"
 
 ThriftReader::ThriftReader(const uint8_t* data, size_t size)
     : buf_(data, size), last_field_id_(0) {}

@@ -1,4 +1,6 @@
-#include "parquet_reader.hpp"
+#include "reader/parquet_reader.hpp"
+#include "writer/parquet_writer.hpp"
+#include <cassert>
 #include <iostream>
 #include <utility>
 #include <unistd.h>
@@ -19,8 +21,8 @@ public:
         if (offset >= nbytes_ || offset == 0) {
             return std::make_pair(nullptr, 0);
         } else {
-            uint8_t len = *reinterpret_cast<uint8_t*>(bytes + offset - 1);
-            char* string = bytes + offset;
+            uint8_t len = *reinterpret_cast<uint8_t*>(bytes_ + offset - 1);
+            char* string = bytes_ + offset;
             return std::make_pair(string, len);
         }
     }
@@ -55,7 +57,7 @@ int main(int argc, char* argv[]) {
     }
 
     // connect to server
-    if (connect(sockfd, (struct sockaddr_in*)&server_addr, sizeof(server_addr)) < 0) {
+    if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("connect");
         close(sockfd);
         exit(1);
@@ -64,6 +66,7 @@ int main(int argc, char* argv[]) {
     // send pages one by one
     ParquetReader reader;
     assert(!reader.open(argv[1]));
+
     PageIterator itr = reader.page_iterator();
     while (itr.has_next()) {
         RawPage page = itr.next();
@@ -80,14 +83,27 @@ int main(int argc, char* argv[]) {
             nbytes_sent += sent;
         }
         // wait for DPK regex to finish preprocessing and read the outputs
-        
+
         // TODO: read all of the current response from server
-        StringPageReader page_reader(page_data.data(), nbytes_total);
+        std::vector<std::string> matched_strings;
+        StringPageReader page_reader(reinterpret_cast<char*>(page_data.data()), nbytes_total);
         size_t offsets[] = {};  // TODO:
         size_t n_matches = 0;  // TODO:
         for (size_t i = 0; i < n_matches; i++) {
             string_t match = page_reader.read(offsets[i]);
+            if (match.first) {
+                matched_strings.emplace_back(match.first, match.second);
+            }
         }
+
+        // if (!matched_strings.empty()) {
+        //     std::vector<Value> col_values;
+        //     for (const auto& s : matched_strings) {
+        //         col_values.push_back(Value::from_string(s));
+        //     }
+        //     writer.write_row_group({col_values});
+        // }
     }
 
+    // writer.close();
 }

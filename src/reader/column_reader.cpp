@@ -1,4 +1,4 @@
-#include "column_reader.hpp"
+#include "reader/column_reader.hpp"
 
 ColumnReader::ColumnReader(ReadRangeFunc read_range,
                            const ColumnChunk& chunk, ParquetType type,

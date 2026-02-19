@@ -1,4 +1,4 @@
-#include "metadata.hpp"
+#include "reader/metadata.hpp"
 
 // ── SchemaElement ──────────────────────────────────────────────────────────────
 

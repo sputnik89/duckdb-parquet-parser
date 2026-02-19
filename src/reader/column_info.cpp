@@ -1,4 +1,4 @@
-#include "column_info.hpp"
+#include "reader/column_info.hpp"
 
 std::string ColumnInfo::type_name() const { return parquet_type_name(type); }
 

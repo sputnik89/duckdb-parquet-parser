@@ -3,3 +3,4 @@ tpch-*-logs/
 tpch-*-logs.zip
 run.sh
 .claude/
+tests/
