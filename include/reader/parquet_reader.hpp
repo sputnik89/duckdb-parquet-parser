@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 struct PageIndexEntry {
@@ -22,6 +23,39 @@ struct RawPage {
 };
 
 class ParquetReader;
+
+class StringColumnIterator {
+public:
+    bool has_next() const;
+    std::pair<size_t, const char*> next();
+
+private:
+    friend class ParquetReader;
+    StringColumnIterator(ParquetReader& reader, size_t col_idx);
+
+    bool decode_next_page();
+    void init_row_group();
+    static uint8_t bit_width(int16_t max_level);
+
+    ParquetReader& reader_;
+    size_t col_idx_;
+
+    size_t rg_idx_;
+    size_t num_row_groups_;
+
+    size_t cur_offset_;
+    int64_t values_read_;
+    int64_t total_values_;
+
+    bool has_dict_;
+    std::vector<std::string> dictionary_;
+
+    std::vector<std::string> page_strings_;
+    size_t string_idx_;
+
+    int16_t max_def_level_;
+    int16_t max_rep_level_;
+};
 
 class PageIterator {
 public:
@@ -60,6 +94,10 @@ public:
     std::vector<Value> read_column(const std::string& col_name, size_t row_group_idx);
     std::vector<Value> read_column(const std::string& col_name);
     std::vector<Value> read_column_by_idx(int row_group_idx, int col_idx);
+
+    // ── String column iteration ─────────────────────────────────────────────
+
+    StringColumnIterator column_iterator(const std::string& col_name);
 
     // ── Raw page data API ────────────────────────────────────────────────────
 

@@ -4,8 +4,8 @@ project(parquet_parser LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(client
-    src/client.cpp
+add_executable(parser
+    src/main.cpp
     src/reader/thrift.cpp
     src/reader/metadata.cpp
     src/reader/column_info.cpp
@@ -14,4 +14,4 @@ add_executable(client
     src/writer/thrift_writer.cpp
     src/writer/parquet_writer.cpp
 )
-target_include_directories(client PRIVATE include)
+target_include_directories(parser PRIVATE include)

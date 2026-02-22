@@ -277,6 +277,194 @@ PageIterator ParquetReader::page_iterator(size_t start_page_id, size_t end_page_
     return PageIterator(*this, start_page_id, end_page_id);
 }
 
+// ── StringColumnIterator ─────────────────────────────────────────────────────
+
+StringColumnIterator ParquetReader::column_iterator(const std::string& col_name) {
+    int col_idx = find_column(col_name);
+    if (col_idx < 0) {
+        throw std::runtime_error("Column not found: " + col_name);
+    }
+    const auto& col_info = columns_[col_idx];
+    if (col_info.type != ParquetType::BYTE_ARRAY) {
+        throw std::runtime_error("Column '" + col_name +
+            "' is not BYTE_ARRAY (type: " + parquet_type_name(col_info.type) + ")");
+    }
+    return StringColumnIterator(*this, static_cast<size_t>(col_idx));
+}
+
+StringColumnIterator::StringColumnIterator(ParquetReader& reader, size_t col_idx)
+    : reader_(reader), col_idx_(col_idx),
+      rg_idx_(0), num_row_groups_(reader.num_row_groups()),
+      cur_offset_(0), values_read_(0), total_values_(0),
+      has_dict_(false), string_idx_(0),
+      max_def_level_(reader.columns()[col_idx].max_def_level),
+      max_rep_level_(reader.columns()[col_idx].max_rep_level) {
+    if (num_row_groups_ > 0) {
+        init_row_group();
+        decode_next_page();
+    }
+}
+
+void StringColumnIterator::init_row_group() {
+    const auto& rg = reader_.metadata().row_groups[rg_idx_];
+    const auto& col_info = reader_.columns()[col_idx_];
+    const auto& chunk = rg.columns[col_info.column_index];
+    const auto& meta = chunk.meta_data.value();
+
+    int64_t offset = meta.data_page_offset;
+    if (meta.dictionary_page_offset.has_value()) {
+        offset = std::min(offset, *meta.dictionary_page_offset);
+    }
+
+    cur_offset_ = static_cast<size_t>(offset);
+    values_read_ = 0;
+    total_values_ = meta.num_values;
+    has_dict_ = false;
+    dictionary_.clear();
+}
+
+bool StringColumnIterator::has_next() const {
+    return string_idx_ < page_strings_.size();
+}
+
+std::pair<size_t, const char*> StringColumnIterator::next() {
+    if (!has_next()) {
+        throw std::runtime_error("StringColumnIterator: no more strings");
+    }
+
+    const auto& str = page_strings_[string_idx_];
+    std::pair<size_t, const char*> result{str.size(), str.data()};
+    string_idx_++;
+
+    if (string_idx_ >= page_strings_.size()) {
+        decode_next_page();
+    }
+
+    return result;
+}
+
+bool StringColumnIterator::decode_next_page() {
+    page_strings_.clear();
+    string_idx_ = 0;
+
+    while (page_strings_.empty()) {
+        // Advance to next row group if current one is exhausted
+        if (values_read_ >= total_values_) {
+            rg_idx_++;
+            while (rg_idx_ < num_row_groups_) {
+                init_row_group();
+                if (total_values_ > 0) break;
+                rg_idx_++;
+            }
+            if (rg_idx_ >= num_row_groups_) {
+                return false;
+            }
+        }
+
+        // Read page header
+        static constexpr size_t HEADER_READ_SIZE = 256;
+        auto header_buf = reader_.read_range(cur_offset_, HEADER_READ_SIZE);
+        ThriftReader header_reader(header_buf.data(), header_buf.size());
+        PageHeader page_header;
+        page_header.deserialize(header_reader);
+        size_t header_size = header_reader.position();
+        cur_offset_ += header_size;
+
+        int32_t page_size = page_header.compressed_page_size;
+        auto page_buf = reader_.read_range(cur_offset_, static_cast<size_t>(page_size));
+
+        if (page_header.type == PageType::DICTIONARY_PAGE) {
+            auto& dph = page_header.dictionary_page_header.value();
+            ByteBuffer buf(page_buf.data(), page_buf.size());
+            dictionary_.clear();
+            dictionary_.reserve(dph.num_values);
+            for (int32_t i = 0; i < dph.num_values; i++) {
+                uint32_t len = buf.read<uint32_t>();
+                const uint8_t* ptr = buf.read_bytes(len);
+                dictionary_.emplace_back(reinterpret_cast<const char*>(ptr), len);
+            }
+            has_dict_ = true;
+            cur_offset_ += page_size;
+            continue;
+        }
+
+        if (page_header.type == PageType::DATA_PAGE) {
+            auto& dph = page_header.data_page_header.value();
+            int32_t num_values = dph.num_values;
+            ByteBuffer buf(page_buf.data(), page_buf.size());
+
+            // Read definition levels
+            std::vector<int16_t> def_levels(num_values, max_def_level_);
+            if (max_def_level_ > 0) {
+                uint32_t def_len = buf.read<uint32_t>();
+                RleDecoder def_decoder(buf.current(), def_len, bit_width(max_def_level_));
+                def_decoder.get_batch(def_levels.data(), num_values);
+                buf.read_bytes(def_len);
+            }
+
+            // Skip repetition levels
+            if (max_rep_level_ > 0) {
+                uint32_t rep_len = buf.read<uint32_t>();
+                buf.read_bytes(rep_len);
+            }
+
+            // Count non-null values
+            int32_t num_non_null = 0;
+            for (int32_t i = 0; i < num_values; i++) {
+                if (def_levels[i] == max_def_level_) num_non_null++;
+            }
+
+            bool use_dict = (dph.encoding == Encoding::PLAIN_DICTIONARY ||
+                             dph.encoding == Encoding::RLE_DICTIONARY);
+
+            if (use_dict && has_dict_) {
+                uint8_t bw = buf.read_byte();
+                RleDecoder idx_decoder(buf.current(),
+                    static_cast<uint32_t>(buf.remaining()), bw);
+                std::vector<int32_t> indices(num_non_null);
+                idx_decoder.get_batch(indices.data(), num_non_null);
+
+                int32_t idx_pos = 0;
+                for (int32_t i = 0; i < num_values; i++) {
+                    if (def_levels[i] == max_def_level_) {
+                        int32_t idx = indices[idx_pos++];
+                        if (idx >= 0 && idx < static_cast<int32_t>(dictionary_.size())) {
+                            page_strings_.push_back(dictionary_[idx]);
+                        }
+                    }
+                }
+            } else {
+                // PLAIN encoding
+                for (int32_t i = 0; i < num_values; i++) {
+                    if (def_levels[i] == max_def_level_) {
+                        uint32_t len = buf.read<uint32_t>();
+                        const uint8_t* ptr = buf.read_bytes(len);
+                        page_strings_.emplace_back(
+                            reinterpret_cast<const char*>(ptr), len);
+                    }
+                }
+            }
+
+            values_read_ += dph.num_values;
+            cur_offset_ += page_size;
+            continue;
+        }
+
+        // Unknown page type - skip
+        cur_offset_ += page_size;
+    }
+
+    return true;
+}
+
+uint8_t StringColumnIterator::bit_width(int16_t max_level) {
+    if (max_level <= 0) return 0;
+    uint8_t bw = 0;
+    int16_t v = max_level;
+    while (v > 0) { bw++; v >>= 1; }
+    return bw;
+}
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 void ParquetReader::build_column_index() {
