@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -27,7 +28,7 @@ class ParquetReader;
 class StringColumnIterator {
 public:
     bool has_next() const;
-    std::pair<size_t, const char*> next();
+    std::tuple<size_t, size_t, const char*> next();  // (global_pos, string_len, string_ptr)
 
 private:
     friend class ParquetReader;
@@ -50,7 +51,10 @@ private:
     bool has_dict_;
     std::vector<std::string> dictionary_;
 
+    size_t row_group_base_;
+
     std::vector<std::string> page_strings_;
+    std::vector<size_t> page_positions_;
     size_t string_idx_;
 
     int16_t max_def_level_;

@@ -296,7 +296,7 @@ StringColumnIterator::StringColumnIterator(ParquetReader& reader, size_t col_idx
     : reader_(reader), col_idx_(col_idx),
       rg_idx_(0), num_row_groups_(reader.num_row_groups()),
       cur_offset_(0), values_read_(0), total_values_(0),
-      has_dict_(false), string_idx_(0),
+      has_dict_(false), row_group_base_(0), string_idx_(0),
       max_def_level_(reader.columns()[col_idx].max_def_level),
       max_rep_level_(reader.columns()[col_idx].max_rep_level) {
     if (num_row_groups_ > 0) {
@@ -327,13 +327,14 @@ bool StringColumnIterator::has_next() const {
     return string_idx_ < page_strings_.size();
 }
 
-std::pair<size_t, const char*> StringColumnIterator::next() {
+std::tuple<size_t, size_t, const char*> StringColumnIterator::next() {
     if (!has_next()) {
         throw std::runtime_error("StringColumnIterator: no more strings");
     }
 
+    size_t pos = page_positions_[string_idx_];
     const auto& str = page_strings_[string_idx_];
-    std::pair<size_t, const char*> result{str.size(), str.data()};
+    std::tuple<size_t, size_t, const char*> result{pos, str.size(), str.data()};
     string_idx_++;
 
     if (string_idx_ >= page_strings_.size()) {
@@ -345,15 +346,18 @@ std::pair<size_t, const char*> StringColumnIterator::next() {
 
 bool StringColumnIterator::decode_next_page() {
     page_strings_.clear();
+    page_positions_.clear();
     string_idx_ = 0;
 
     while (page_strings_.empty()) {
         // Advance to next row group if current one is exhausted
         if (values_read_ >= total_values_) {
+            row_group_base_ += reader_.metadata().row_groups[rg_idx_].num_rows;
             rg_idx_++;
             while (rg_idx_ < num_row_groups_) {
                 init_row_group();
                 if (total_values_ > 0) break;
+                row_group_base_ += reader_.metadata().row_groups[rg_idx_].num_rows;
                 rg_idx_++;
             }
             if (rg_idx_ >= num_row_groups_) {
@@ -391,6 +395,7 @@ bool StringColumnIterator::decode_next_page() {
         if (page_header.type == PageType::DATA_PAGE) {
             auto& dph = page_header.data_page_header.value();
             int32_t num_values = dph.num_values;
+            size_t base_pos = row_group_base_ + static_cast<size_t>(values_read_);
             ByteBuffer buf(page_buf.data(), page_buf.size());
 
             // Read definition levels
@@ -430,6 +435,7 @@ bool StringColumnIterator::decode_next_page() {
                         int32_t idx = indices[idx_pos++];
                         if (idx >= 0 && idx < static_cast<int32_t>(dictionary_.size())) {
                             page_strings_.push_back(dictionary_[idx]);
+                            page_positions_.push_back(base_pos + i);
                         }
                     }
                 }
@@ -441,6 +447,7 @@ bool StringColumnIterator::decode_next_page() {
                         const uint8_t* ptr = buf.read_bytes(len);
                         page_strings_.emplace_back(
                             reinterpret_cast<const char*>(ptr), len);
+                        page_positions_.push_back(base_pos + i);
                     }
                 }
             }
